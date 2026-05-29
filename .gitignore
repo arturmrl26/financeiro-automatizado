@@ -1,0 +1,20 @@
+# Credenciais e chaves — NUNCA commitar
+.env
+*.key
+*.pem
+secrets.json
+
+# Arquivos do sistema
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+
+# Logs
+*.log
+
+# Planilhas (ficam no Google Drive)
+*.xlsx
+*.xls
+*.csv
