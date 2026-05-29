@@ -1,0 +1,165 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-financeiro",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [0, 0],
+      "id": "78bd37fb-6981-45a1-b8d6-d8b64d2edd4d",
+      "name": "Webhook",
+      "webhookId": "9b5e4067-3dad-4079-a024-0fcbf93e0f85"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body;\n\n// Extrai texto da mensagem (suporte a texto simples e texto com formatação)\nconst msg = (\n  body?.data?.message?.conversation ||\n  body?.data?.message?.extendedTextMessage?.text ||\n  \"\"\n).trim();\n\n// Ignora mensagens vazias ou de sistema\nif (!msg || msg.length < 5) {\n  return [{ json: { valido: false, motivo: \"mensagem vazia\", msg_original: msg } }];\n}\n\nconst partes = msg.split(\"|\").map(p => p.trim());\nconst tipo = partes[0]?.toUpperCase();\nconst numero = body?.data?.key?.remoteJid || \"\";\nconst pushName = body?.data?.pushName || \"Alguém\";\n\n// ── REAL (atualiza valor real de um lançamento existente)\nif (tipo === \"REAL\") {\n  if (partes.length < 4) {\n    return [{ json: { valido: false, motivo: \"formato REAL incorreto\", msg_original: msg, numero } }];\n  }\n  return [{ json: {\n    valido: true,\n    acao: \"atualizar_real\",\n    tipo: \"REAL\",\n    data: partes[1],\n    categoria: partes[2],\n    real: partes[3].replace(\",\", \".\"),\n    responsavel: partes[4] || \"\",\n    numero,\n    pushName,\n    msg_original: msg\n  }}];\n}\n\n// ── GASTO ou RECEITA (novo lançamento)\nif (tipo === \"GASTO\" || tipo === \"RECEITA\") {\n  if (partes.length < 5) {\n    return [{ json: { valido: false, motivo: \"formato incorreto\", msg_original: msg, numero } }];\n  }\n\n  const fixo = (partes[7] || \"N\").toUpperCase();\n  const mes_inicio = partes[8] ? parseInt(partes[8]) : \"\";\n  const mes_fim = partes[9] ? parseInt(partes[9]) : \"\";\n\n  return [{ json: {\n    valido: true,\n    acao: \"inserir\",\n    tipo,\n    data: partes[1],\n    categoria: partes[2],\n    previsto: partes[3].replace(\",\", \".\") || \"0\",\n    real: partes[4].replace(\",\", \".\") || \"0\",\n    responsavel: partes[5] || \"\",\n    obs: partes[6] || \"\",\n    fixo,\n    mes_inicio,\n    mes_fim,\n    numero,\n    pushName,\n    msg_original: msg\n  }}];\n}\n\n// Tipo não reconhecido\nreturn [{ json: {\n  valido: false,\n  motivo: \"tipo não reconhecido (use GASTO, RECEITA ou REAL)\",\n  msg_original: msg,\n  numero\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [176, 0],
+      "id": "d4292a6c-06da-43db-9be7-bfbf8e6a2bd7",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "fe6d53a5-fd7a-4f21-b8cc-133632b6f74e",
+              "leftValue": "={{ $json.valido }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [384, 0],
+      "id": "71526eb1-4e6d-424c-b753-9778ee06e083",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "<URL_DO_GOOGLE_APPS_SCRIPT>",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"acao\": \"={{ $json.acao }}\",\n  \"tipo\": \"={{ $json.tipo }}\",\n  \"data\": \"={{ $json.data }}\",\n  \"categoria\": \"={{ $json.categoria }}\",\n  \"previsto\": \"={{ $json.previsto }}\",\n  \"real\": \"={{ $json.real }}\",\n  \"responsavel\": \"={{ $json.responsavel }}\",\n  \"obs\": \"={{ $json.obs }}\",\n  \"fixo\": \"={{ $json.fixo }}\",\n  \"mes_inicio\": \"={{ $json.mes_inicio }}\",\n  \"mes_fim\": \"={{ $json.mes_fim }}\"\n}",
+        "options": {
+          "redirect": {
+            "redirect": {}
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [592, -96],
+      "id": "c228c2e8-ad7f-47f6-925f-1ce60347aebb",
+      "name": "HTTP Request",
+      "alwaysOutputData": false,
+      "executeOnce": false,
+      "retryOnFail": false
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://<IP_DO_SERVIDOR>/message/sendText/<NOME_DA_INSTANCIA_EVOLUTION>",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "<SUA_APIKEY_EVOLUTION>"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"number\": \"<SEU_NUMERO_WHATSAPP_COM_DDI>\",\n  \"textMessage\": {\n    \"text\": \"={{ $('Code in JavaScript').item.json.tipo + ' registrado! ' + $('Code in JavaScript').item.json.categoria + ' R$ ' + $('Code in JavaScript').item.json.real }}\"\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [800, -96],
+      "id": "2a0b8d09-def5-4451-8104-97abf2e6885e",
+      "name": "HTTP Request1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://<IP_DO_SERVIDOR>/message/sendText/<NOME_DA_INSTANCIA_EVOLUTION>",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "<SUA_APIKEY_EVOLUTION>"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"number\": \"<SEU_NUMERO_WHATSAPP_COM_DDI>\",\n  \"textMessage\": {\n    \"text\": \"Formato invalido! Use: GASTO | DD/MM/AAAA | Categoria | Previsto | Real | Responsavel\"\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [592, 96],
+      "id": "88025bf3-4a6b-4a5f-b291-512ff3f7ef9b",
+      "name": "HTTP Request2"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [{ "node": "Code in JavaScript", "type": "main", "index": 0 }]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [{ "node": "If", "type": "main", "index": 0 }]
+      ]
+    },
+    "If": {
+      "main": [
+        [{ "node": "HTTP Request", "type": "main", "index": 0 }],
+        [{ "node": "HTTP Request2", "type": "main", "index": 0 }]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [{ "node": "HTTP Request1", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "9d6049e4-00b2-4bf0-9111-70e4cfca65c1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "<SEU_N8N_INSTANCE_ID>"
+  },
+  "id": "8I2PdBFSarRphC9t",
+  "tags": []
+}
